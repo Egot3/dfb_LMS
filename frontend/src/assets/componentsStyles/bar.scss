@@ -1,0 +1,20 @@
+@use "../variable";
+
+.mainNavbar{
+    span{
+        color: variable.$tx-color;
+    }
+    background-color: variable.$bg-color;
+    width: 100vw;
+    padding: 0;
+    padding-top: 2rem;
+    color: variable.$tx-color;
+}
+
+.navItem{
+    background-color: variable.$fg-color;
+}
+
+.navItemHolder{
+    border-radius: 1rem 0 1rem 0;
+}
