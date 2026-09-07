@@ -415,7 +415,22 @@ func (c *chiService) PostAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q, err := c.runner.Get(quizUUID)
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	q, err := tr.Get(quizUUID)
 	if err != nil {
 		logger.Error("couldn't get quiz",
 			slog.String("Error", err.Error()),
@@ -425,6 +440,8 @@ func (c *chiService) PostAnswer(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNotFound)
 		case errors.Is(err, testrunner.ErrRunnerInactive):
 			w.WriteHeader(http.StatusLocked)
+		default:
+			w.WriteHeader(http.StatusBadRequest)
 		}
 
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()})
@@ -441,7 +458,7 @@ func (c *chiService) PostAnswer(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)
 		return
 	}
-	err = c.answerRepo.SetAnswer(ctx, c.runner.CurrentTestUUID(), groupUUID, userUUID, quizUUID, string(answered), score)
+	err = c.answerRepo.SetAnswer(ctx, tr.Test(), groupUUID, userUUID, quizUUID, string(answered), score)
 	if err != nil {
 		logger.Error("couldn't set an answer",
 			slog.String("Error", err.Error()),
@@ -485,7 +502,22 @@ func (c *chiService) Totalize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	currentTestUUID := c.runner.CurrentTestUUID()
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	currentTestUUID := tr.Test()
 	logger = logger.With(
 		slog.String("group_uuid", groupUUID.String()),
 		slog.String("user_uuid", userUUID.String()),

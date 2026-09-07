@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/egot3/fathom/internal/config"
 	"github.com/egot3/fathom/internal/database/repositories/group"
 	"github.com/egot3/fathom/internal/database/repositories/quiz"
 	"github.com/egot3/fathom/internal/database/repositories/test"
@@ -22,7 +23,8 @@ type chiService struct {
 	testRepo   test.TestRepository
 	answerRepo total.TotalRepository
 
-	runner testrunner.TestRunner
+	cfg     *config.Config
+	manager *testrunner.Manager
 }
 
 type UserService interface {
@@ -65,8 +67,6 @@ type TestService interface {
 	StopTest(w http.ResponseWriter, r *http.Request)
 	PauseTest(w http.ResponseWriter, r *http.Request)
 	AddQuizzes(w http.ResponseWriter, r *http.Request)
-	AddQuizzesToRunning(w http.ResponseWriter, r *http.Request)
-	RemoveQuizzesFromRunning(w http.ResponseWriter, r *http.Request)
 	RemoveQuizzes(w http.ResponseWriter, r *http.Request)
 	ExtendTest(w http.ResponseWriter, r *http.Request)
 	ResumeTest(w http.ResponseWriter, r *http.Request)
@@ -97,10 +97,10 @@ type Service interface {
 	QuizService
 	TestService
 	TotalService
-	GetTestUUID() uuid.UUID
-	AllowedToTest(ctx context.Context, userUUID uuid.UUID) (bool, error)
-	GetDeadline() (*time.Time, error)
-	GetAllRunning() uuid.UUIDs
+	AllowedToTest(ctx context.Context, userUUID uuid.UUID, key uint64) (bool, error)
+	GetDeadline(key uint64) (time.Time, error)
+	IsRunning(quiz uuid.UUID) bool
+	GetTestUUID(uint64) uuid.UUID
 }
 
 func NewTestService(i do.Injector) (Service, error) {
@@ -110,7 +110,8 @@ func NewTestService(i do.Injector) (Service, error) {
 	tR := do.MustInvoke[test.TestRepository](i)
 	aR := do.MustInvoke[total.TotalRepository](i)
 
-	r := do.MustInvoke[testrunner.TestRunner](i)
+	ma := do.MustInvoke[*testrunner.Manager](i)
+	cf := do.MustInvoke[*config.Config](i)
 
 	return &chiService{
 		userRepo:   uR,
@@ -118,6 +119,7 @@ func NewTestService(i do.Injector) (Service, error) {
 		groupRepo:  gR,
 		testRepo:   tR,
 		answerRepo: aR,
-		runner:     r,
+		manager:    ma,
+		cfg:        cf,
 	}, nil
 }

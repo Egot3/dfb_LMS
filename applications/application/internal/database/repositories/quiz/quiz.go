@@ -84,11 +84,11 @@ func (r *bunQuizRepository) ListQuizzes(ctx context.Context, page, size int) ([]
 }
 
 func (r *bunQuizRepository) CheckRegistered(ctx context.Context, path string) (bool, error) {
-	return r.db.NewSelect().Model(&models.Quiz{Path: path}).WherePK().Exists(ctx)
+	return r.db.NewSelect().Model((*models.Quiz)(nil)).Where("path = ?", path).Exists(ctx)
 }
 
 func (r *bunQuizRepository) CheckIntegrity(ctx context.Context, path string, checksum [8]byte) (bool, error) {
-	return r.db.NewSelect().Model(&models.Quiz{Path: path}).WherePK().Where("checksum = ?", checksum).Exists(ctx)
+	return r.db.NewSelect().Model((*models.Quiz)(nil)).Where("path = ?", path).Where("checksum = ?", checksum).Exists(ctx)
 }
 
 func (r *bunQuizRepository) UpdateChecksum(ctx context.Context, quizUUID uuid.UUID, checksum [8]byte) error {

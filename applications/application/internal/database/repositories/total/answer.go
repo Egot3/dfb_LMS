@@ -156,20 +156,37 @@ func (r *bunTotalRepository) AnswerScore(ctx context.Context, userUUID, testUUID
 }
 
 func (r *bunTotalRepository) Total(ctx context.Context, userUUID, testUUID, groupUUID uuid.UUID) (contracts.Total, error) {
-	total := contracts.Total{}
-	err := r.db.NewSelect().TableExpr("users_groups_tests AS ugt").
+	exists, err := r.db.NewSelect().
+		TableExpr("users_groups_tests AS ugt").
 		Where("ugt.test_uuid = ?", testUUID).
 		Where("ugt.user_uuid = ?", userUUID).
 		Where("ugt.group_uuid = ?", groupUUID).
-		Join("JOIN users_groups_tests_quiz_answers AS ugtqa").
+		Exists(ctx)
+	if err != nil {
+		return contracts.Total{}, err
+	}
+	if !exists {
+		return contracts.Total{}, sql.ErrNoRows
+	}
+
+	total := contracts.Total{}
+	err = r.db.NewSelect().TableExpr("users_groups_tests AS ugt").
+		Where("ugt.test_uuid = ?", testUUID).
+		Where("ugt.user_uuid = ?", userUUID).
+		Where("ugt.group_uuid = ?", groupUUID).
+		Join("LEFT JOIN users_groups_tests_quiz_answers AS ugtqa").
 		JoinOn("ugt.test_uuid = ugtqa.test_uuid").JoinOn("ugt.group_uuid = ugtqa.group_uuid").JoinOn("ugt.user_uuid = ugtqa.user_uuid").
-		Join("JOIN quizzes AS q").JoinOn("q.uuid = ugtqa.quiz_uuid").
+		Join("LEFT JOIN quizzes AS q").JoinOn("q.uuid = ugtqa.quiz_uuid").
+		Join("JOIN groups AS g").JoinOn("g.uuid = ugt.group_uuid").ColumnExpr("g.name AS group_name").ColumnExpr("g.uuid AS group_uuid").
+		Join("JOIN tests AS t").JoinOn("t.uuid = ugt.test_uuid").ColumnExpr("t.name AS test_name").ColumnExpr("t.uuid AS test_uuid").
+		Join("JOIN users AS u").JoinOn("u.uuid = ugt.user_uuid").ColumnExpr("u.nickname AS user_name").ColumnExpr("u.uuid AS user_uuid").
+		ColumnExpr("ugt.score AS score").
+		ColumnExpr("ugt.finalized_at AS finalized_at").
 		ColumnExpr("COALESCE(SUM(q.score), 0) AS max_score").
 		Scan(ctx, &total)
 	if err != nil {
 		return contracts.Total{}, err
 	}
-
 	return total, nil
 }
 

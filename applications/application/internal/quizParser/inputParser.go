@@ -15,7 +15,7 @@ func InputParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
 		line := reader.Text()
 		matches := InputRegex.FindStringSubmatch(line)
 		if len(matches) > 1 {
-			quizP.Answer.Input = quiz.AnswerInput{Input: matches[1]}
+			quizP.Answer.Input = &quiz.AnswerInput{Input: matches[1]}
 			break
 		}
 

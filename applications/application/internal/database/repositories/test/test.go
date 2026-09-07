@@ -69,48 +69,6 @@ func (r *bunTestRepository) BundleQuizzesToTest(ctx context.Context, testUUID uu
 	})
 }
 
-/* func (r *bunTestRepository) BundleQuizzesToTest(ctx context.Context, testUUID uuid.UUID, pathes []string) error {
-	return r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		var testQuizzes []models.TestsQuizzes = make([]models.TestsQuizzes, len(pathes))
-		for pos, path := range pathes {
-			testQuizzes[pos] = models.TestsQuizzes{Position: pos, TestUUID: testUUID, QuizPath: path}
-		}
-		_, err := tx.NewInsert().Model(&testQuizzes).Exec(ctx)
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
-} */
-
-// old
-/* func (r *bunTestRepository) PruneQuizzesFromTest(ctx context.Context, testUUID uuid.UUID, pathes []string) error {
-	notFound := make([]string, 0)
-	err := r.db.RunInTx(ctx, &sql.TxOptions{}, func(ctx context.Context, tx bun.Tx) error {
-		for _, path := range pathes {
-			_, err := tx.NewDelete().Model(&models.TestsQuizzes{QuizPath: path, TestUUID: testUUID}).WherePK().Exec(ctx)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					notFound = append(notFound, path)
-				}
-				return err
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-
-	if len(notFound) > 0 {
-		return &NotInTestError{Count: len(notFound)}
-	}
-
-	return nil
-} */
-
 // new(alpha)
 func (r *bunTestRepository) PruneQuizzesFromTest(ctx context.Context, testUUID uuid.UUID, quizUUIDs uuid.UUIDs) error {
 	notFound := 0
@@ -147,6 +105,16 @@ func (r *bunTestRepository) Test(ctx context.Context, UUID uuid.UUID) (models.Te
 	}
 
 	return test, nil
+}
+
+func (r *bunTestRepository) Tests(ctx context.Context, UUIDs uuid.UUIDs) ([]models.Test, error) {
+	tests := make([]models.Test, len(UUIDs))
+	err := r.db.NewSelect().Model(&tests).Where("uuid IN (?)", bun.List(UUIDs)).Relation("Quizzes").Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return tests, nil
 }
 
 func (r *bunTestRepository) DeleteTest(ctx context.Context, UUID uuid.UUID) error {

@@ -6,14 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	mrand "math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	charmlog "github.com/charmbracelet/log"
-	jwtutils "github.com/egot3/fathom/internal/JWTutils"
 	"github.com/egot3/fathom/internal/carefulness"
 	"github.com/egot3/fathom/internal/contracts"
 	"github.com/egot3/fathom/internal/database/repositories"
@@ -44,10 +45,13 @@ func randomTest(t *testing.T, db *bun.DB) uuid.UUID {
 func randomQuiz(t *testing.T, db *bun.DB) (uuid.UUID, string) {
 	t.Helper()
 
+	fp, err := filepath.Abs("")
+	require.NoError(t, err)
+
 	var quizUUID uuid.UUID
 	answer := rand.Text()
-	err := db.NewInsert().Model(&models.Quiz{
-		Path:          "/path.md",
+	err = db.NewInsert().Model(&models.Quiz{
+		Path:          filepath.VolumeName(fp) + string(filepath.Separator) + rand.Text() + ".md",
 		Score:         1,
 		Checksum:      [8]byte{},
 		CorrectAnswer: answer,
@@ -60,8 +64,10 @@ func randomQuiz(t *testing.T, db *bun.DB) (uuid.UUID, string) {
 func predefinedQuiz(t *testing.T, db *bun.DB) (quizUUID uuid.UUID, path string) {
 	t.Helper()
 
+	f := testutils.TestQuiz(t)
+
 	err := db.NewInsert().Model(&models.Quiz{
-		Path:          "/home/ETS/programming/Fathom/application/internal/testutils/placebo.md",
+		Path:          f.Name(),
 		Score:         1,
 		Checksum:      [8]byte{},
 		CorrectAnswer: rand.Text(),
@@ -98,27 +104,20 @@ func randomUser(t *testing.T, db *bun.DB) uuid.UUID {
 }
 
 func TestTotalHandler_GetAnswer(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -160,15 +159,7 @@ func TestTotalHandler_GetAnswer(t *testing.T) {
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -184,18 +175,15 @@ func TestTotalHandler_GetAnswer(t *testing.T) {
 	})
 
 	t.Run("Not inferred", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -203,7 +191,7 @@ func TestTotalHandler_GetAnswer(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := randomQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -293,15 +281,7 @@ func TestTotalHandler_GetAnswer(t *testing.T) {
 					nil,
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -319,27 +299,20 @@ func TestTotalHandler_GetAnswer(t *testing.T) {
 }
 
 func TestTotalHandler_GetGroupTotals(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -386,15 +359,7 @@ func TestTotalHandler_GetGroupTotals(t *testing.T) {
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -407,22 +372,19 @@ func TestTotalHandler_GetGroupTotals(t *testing.T) {
 
 		require.Len(t, bodyContract.Totals, 1)
 
-		require.Equal(t, 1, bodyContract.Totals[0].Score)
+		require.EqualValues(t, 1, bodyContract.Totals[0].Score)
 	})
 
 	t.Run("Not inferred", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -430,7 +392,7 @@ func TestTotalHandler_GetGroupTotals(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := randomQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -497,15 +459,7 @@ func TestTotalHandler_GetGroupTotals(t *testing.T) {
 					nil,
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -523,27 +477,20 @@ func TestTotalHandler_GetGroupTotals(t *testing.T) {
 }
 
 func TestTotalHandler_GetTestTotals(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -589,15 +536,7 @@ func TestTotalHandler_GetTestTotals(t *testing.T) {
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -610,22 +549,19 @@ func TestTotalHandler_GetTestTotals(t *testing.T) {
 
 		require.Len(t, bodyContract.Totals, 1)
 
-		require.Equal(t, 1, bodyContract.Totals[0].Score)
+		require.EqualValues(t, 1, bodyContract.Totals[0].Score)
 	})
 
 	t.Run("Not inferred", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -633,7 +569,7 @@ func TestTotalHandler_GetTestTotals(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := randomQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -687,15 +623,7 @@ func TestTotalHandler_GetTestTotals(t *testing.T) {
 					nil,
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -713,27 +641,20 @@ func TestTotalHandler_GetTestTotals(t *testing.T) {
 }
 
 func TestTotalHandler_GetUserTotal(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -781,15 +702,7 @@ func TestTotalHandler_GetUserTotal(t *testing.T) {
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -802,22 +715,19 @@ func TestTotalHandler_GetUserTotal(t *testing.T) {
 		err = json.Unmarshal(body, &bodyContract)
 		require.NoError(t, err)
 
-		require.Equal(t, 1, bodyContract.Total.Score)
+		require.EqualValues(t, 1, bodyContract.Total.Score)
 	})
 
 	t.Run("Not inferred", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -825,7 +735,7 @@ func TestTotalHandler_GetUserTotal(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := randomQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -909,15 +819,7 @@ func TestTotalHandler_GetUserTotal(t *testing.T) {
 					nil,
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -935,27 +837,20 @@ func TestTotalHandler_GetUserTotal(t *testing.T) {
 }
 
 func TestTotalHandler_GetUserTotals(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -995,21 +890,13 @@ func TestTotalHandler_GetUserTotals(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodGet,
-			fmt.Sprintf("/api/v1/total/all/%v",
+			fmt.Sprintf("/api/v1/total/all/%v?page=0&size=1",
 				userUUID,
 			),
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -1024,22 +911,19 @@ func TestTotalHandler_GetUserTotals(t *testing.T) {
 
 		require.Len(t, bodyContract.Totals, 1)
 
-		require.Equal(t, 1, bodyContract.Totals[0].Score)
+		require.EqualValues(t, 1, bodyContract.Totals[0].Score)
 	})
 
 	t.Run("Not inferred", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1047,7 +931,7 @@ func TestTotalHandler_GetUserTotals(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := randomQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -1095,21 +979,13 @@ func TestTotalHandler_GetUserTotals(t *testing.T) {
 
 				req := httptest.NewRequest(
 					http.MethodGet,
-					fmt.Sprintf("/api/v1/total/all/%v",
+					fmt.Sprintf("/api/v1/total/all/%v?page=0&size=1",
 						tC.userUUID,
 					),
 					nil,
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -1127,23 +1003,17 @@ func TestTotalHandler_GetUserTotals(t *testing.T) {
 }
 
 func TestTotalHandler_PostAnswer(t *testing.T) {
-	t.Parallel()
-
-	token, err := jwtutils.GenerateToken(uuid.Nil, true)
-	require.NoError(t, err)
 
 	t.Run("Valid", func(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[testrunner.TestRunner](i)
+		m := do.MustInvoke[*testrunner.Manager](i)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1151,15 +1021,22 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, path := predefinedQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
 		}).Exec(t.Context())
 		require.NoError(t, err)
 
-		err := r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+		tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
+
+		all := m.GetAll()
+		require.Len(t, all, 1)
+		key := all[0]
+		trc, ok := m.Get(key)
+		require.True(t, ok)
+		require.Equal(t, trc, tr)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
 			GroupUUID: groupUUID,
@@ -1172,7 +1049,7 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 		reqJSON, err := json.Marshal(contracts.PostAnswerRequest{
 			Value: quiz.QuizAnswers{
-				Input: quiz.AnswerInput{
+				Input: &quiz.AnswerInput{
 					Input: "1",
 				},
 			},
@@ -1181,22 +1058,14 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running/%v",
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d/%v",
 				groupUUID, userUUID,
-				quizUUID,
+				key, quizUUID,
 			),
 			bytes.NewReader(reqJSON),
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -1216,12 +1085,10 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1229,7 +1096,7 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := predefinedQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -1247,7 +1114,7 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 		reqJSON, err := json.Marshal(contracts.PostAnswerRequest{
 			Value: quiz.QuizAnswers{
-				Input: quiz.AnswerInput{
+				Input: &quiz.AnswerInput{
 					Input: "1",
 				},
 			},
@@ -1256,22 +1123,14 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running/%v",
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d/%v",
 				groupUUID, userUUID,
-				quizUUID,
+				mrand.Uint64(), quizUUID,
 			),
 			bytes.NewReader(reqJSON),
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -1283,14 +1142,12 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[testrunner.TestRunner](i)
+		m := do.MustInvoke[*testrunner.Manager](i)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1298,15 +1155,22 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, path := predefinedQuiz(t, db)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
 		}).Exec(t.Context())
 		require.NoError(t, err)
 
-		err := r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+		tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
+
+		all := m.GetAll()
+		require.Len(t, all, 1)
+		key := all[0]
+		trc, ok := m.Get(key)
+		require.True(t, ok)
+		require.Equal(t, trc, tr)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
 			GroupUUID: groupUUID,
@@ -1352,7 +1216,7 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 			t.Run(tC.desc, func(t *testing.T) {
 				reqJSON, err := json.Marshal(contracts.PostAnswerRequest{
 					Value: quiz.QuizAnswers{
-						Input: quiz.AnswerInput{
+						Input: &quiz.AnswerInput{
 							Input: "1",
 						},
 					},
@@ -1361,22 +1225,14 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 				req := httptest.NewRequest(
 					http.MethodPost,
-					fmt.Sprintf("/api/v1/total/%v/%v/running/%v",
+					fmt.Sprintf("/api/v1/total/%v/%v/running/%d/%v",
 						tC.groupUUID, tC.userUUID,
-						tC.quizUUID,
+						key, tC.quizUUID,
 					),
 					bytes.NewReader(reqJSON),
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
@@ -1388,39 +1244,29 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 }
 
 func TestTotalHandler_Totalize(t *testing.T) {
-	t.Parallel()
 
 	t.Run("Valid", func(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[testrunner.TestRunner](i)
-
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
 
 		testUUID := randomTest(t, db)
 		quizUUID, path := predefinedQuiz(t, db)
-		token, err := jwtutils.GenerateToken(userUUID, true)
-		require.NoError(t, err)
 
 		t.Logf("userUUID: %v, groupUUID: %v, quizUUID: %v, testUUID: %v", userUUID, groupUUID, quizUUID, testUUID)
 
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
 		}).Exec(t.Context())
-		require.NoError(t, err)
-
-		err = r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
@@ -1441,23 +1287,27 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
+		m := do.MustInvoke[*testrunner.Manager](i)
+
+		tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+		require.NoError(t, err)
+
+		all := m.GetAll()
+		require.Len(t, all, 1)
+		key := all[0]
+		trc, ok := m.Get(key)
+		require.True(t, ok)
+		require.Equal(t, trc, tr)
+
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running",
-				groupUUID, userUUID,
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+				groupUUID, userUUID, key,
 			),
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -1477,12 +1327,10 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1490,10 +1338,7 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, _ := predefinedQuiz(t, db)
 
-		token, err := jwtutils.GenerateToken(userUUID, true)
-		require.NoError(t, err)
-
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
@@ -1511,21 +1356,13 @@ func TestTotalHandler_Totalize(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running",
-				groupUUID, userUUID,
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+				groupUUID, userUUID, mrand.Uint64(),
 			),
 			nil,
 		)
 		req.Header.Set("Content-Type", "application/json")
-		req.AddCookie(&http.Cookie{
-			Name:     "jwt_token",
-			Value:    token,
-			Path:     "/",
-			Expires:  time.Now().Add(jwtutils.JWTTTL),
-			HttpOnly: true,
-			SameSite: http.SameSiteNoneMode,
-			Secure:   true,
-		})
+		testutils.AddTeacherCookie(t, req)
 		rec := httptest.NewRecorder()
 
 		router.ServeHTTP(rec, req)
@@ -1537,14 +1374,10 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		i := testutils.NewTestInjector(t, repositories.RepositoryPackage)
 
 		do.ProvideValue(i, slog.New(charmlog.New(os.Stderr)))
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[testrunner.TestRunner](i)
-
 		db := do.MustInvoke[*bun.DB](i)
-		RegisterModels(db)
-		RegisterM2M(db)
 
 		userUUID := randomUser(t, db)
 		groupUUID := randomGroup(t, db)
@@ -1552,17 +1385,13 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		testUUID := randomTest(t, db)
 		quizUUID, path := predefinedQuiz(t, db)
 
-		token, err := jwtutils.GenerateToken(userUUID, true)
-		require.NoError(t, err)
-
-		_, err = db.NewInsert().Model(&models.TestsQuizzes{
+		_, err := db.NewInsert().Model(&models.TestsQuizzes{
 			TestUUID: testUUID,
 			QuizUUID: quizUUID,
 			Position: 1,
 		}).Exec(t.Context())
 		require.NoError(t, err)
 
-		err = r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
@@ -1599,35 +1428,42 @@ func TestTotalHandler_Totalize(t *testing.T) {
 			t.Run(tC.desc, func(t *testing.T) {
 				reqJSON, err := json.Marshal(contracts.PostAnswerRequest{
 					Value: quiz.QuizAnswers{
-						Input: quiz.AnswerInput{
+						Input: &quiz.AnswerInput{
 							Input: "1",
 						},
 					},
 				})
 				require.NoError(t, err)
 
+				i := i.Scope(tC.desc)
+				do.Provide(i, testrunner.NewManager)
+
+				m := do.MustInvoke[*testrunner.Manager](i)
+
+				tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+				require.NoError(t, err)
+
+				all := m.GetAll()
+				require.Len(t, all, 1)
+				key := all[0]
+				trc, ok := m.Get(key)
+				require.True(t, ok)
+				require.Equal(t, trc, tr)
+
 				req := httptest.NewRequest(
 					http.MethodPost,
-					fmt.Sprintf("/api/v1/total/%v/%v/running",
-						tC.groupUUID, tC.userUUID,
+					fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+						tC.groupUUID, tC.userUUID, key,
 					),
 					bytes.NewReader(reqJSON),
 				)
 				req.Header.Set("Content-Type", "application/json")
-				req.AddCookie(&http.Cookie{
-					Name:     "jwt_token",
-					Value:    token,
-					Path:     "/",
-					Expires:  time.Now().Add(jwtutils.JWTTTL),
-					HttpOnly: true,
-					SameSite: http.SameSiteNoneMode,
-					Secure:   true,
-				})
+				testutils.AddTeacherCookie(t, req)
 				rec := httptest.NewRecorder()
 
 				router.ServeHTTP(rec, req)
 
-				require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+				require.Equal(t, http.StatusLocked, rec.Code, rec.Body.String())
 			})
 		}
 	})

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -472,6 +473,10 @@ func (c *chiService) ListGroups(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (c *chiService) AllowedToTest(ctx context.Context, userUUID uuid.UUID) (bool, error) {
-	return c.groupRepo.IsInAny(ctx, c.runner.AllowedGroupUUIDs(), userUUID)
+func (c *chiService) AllowedToTest(ctx context.Context, userUUID uuid.UUID, key uint64) (bool, error) {
+	info, ok := c.manager.Get(key)
+	if !ok {
+		return false, fmt.Errorf("key not found in runner")
+	}
+	return c.groupRepo.IsInAny(ctx, info.Groups(), userUUID)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,7 @@ import (
 	jwtutils "github.com/egot3/fathom/internal/JWTutils"
 	"github.com/egot3/fathom/internal/carefulness"
 	"github.com/egot3/fathom/internal/logging"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"golang.org/x/sync/singleflight"
 )
@@ -42,14 +44,22 @@ func (c *userCache) currentGeneration(testUUID uuid.UUID) *generation {
 
 // BEHOLD, THE HOLY CODE
 // Most iterated function
-func IsInGroup(testUUIDGetter func() uuid.UUID, allowedChecker func(context.Context, uuid.UUID) (bool, error), deadlineGetter func() (*time.Time, error)) func(http.Handler) http.Handler {
+func IsInGroup(testUUIDGetter func(uint64) uuid.UUID, allowedChecker func(context.Context, uuid.UUID, uint64) (bool, error), deadlineGetter func(uint64) (time.Time, error)) func(http.Handler) http.Handler {
 	cache := &userCache{}
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			logger := logging.LoggerFromContext(r.Context()).With(slog.String("layer", "middleware"))
 
-			upd := testUUIDGetter()
+			runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+				return
+			}
+			logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+			upd := testUUIDGetter(runnerKey)
 			if upd == uuid.Nil {
 				w.WriteHeader(http.StatusLocked)
 				json.NewEncoder(w).Encode(carefulness.JSONError{Error: "No test is running"})
@@ -78,12 +88,12 @@ func IsInGroup(testUUIDGetter func() uuid.UUID, allowedChecker func(context.Cont
 			g.mu.Unlock()
 
 			if !ok {
-				d, err := deadlineGetter()
+				d, err := deadlineGetter(runnerKey)
 				if err != nil {
 					w.WriteHeader(http.StatusLocked)
 					return
 				}
-				if time.Until(*d) <= 5*time.Second {
+				if time.Until(d) <= 5*time.Second {
 					w.WriteHeader(http.StatusForbidden)
 					json.NewEncoder(w).Encode(carefulness.JSONError{Error: "can't register new contestants 5s before the end"})
 					return
@@ -98,7 +108,12 @@ func IsInGroup(testUUIDGetter func() uuid.UUID, allowedChecker func(context.Cont
 						return res, nil
 					}
 
-					allow, fetchErr := allowedChecker(r.Context(), userUUID)
+					key, err := strconv.ParseUint(r.PathValue("runnerKey"), 10, 64)
+					if err != nil {
+						return false, err
+					}
+
+					allow, fetchErr := allowedChecker(r.Context(), userUUID, key)
 					if fetchErr != nil {
 						return false, fetchErr
 					}

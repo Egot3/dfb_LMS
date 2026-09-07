@@ -8,7 +8,7 @@ import (
 type UnprocessableRequest struct {
 }
 
-var ErrUnprocessableRequest MalformedRequest
+var ErrUnprocessableRequest UnprocessableRequest
 
 func (e UnprocessableRequest) Error() string {
 	return "Provided JSON is badly typed"

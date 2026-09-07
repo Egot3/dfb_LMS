@@ -96,74 +96,6 @@ func (c *chiService) AddQuizzes(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (c *chiService) AddQuizzesToRunning(w http.ResponseWriter, r *http.Request) {
-	logger := logging.LoggerFromContext(r.Context()).With(
-		slog.String("layer", "handler"),
-	)
-	ctx := logging.WithLogger(r.Context(), logger)
-	w.Header().Set("Content-Type", "application/json")
-
-	var req contracts.AddQuizzesToTestRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		logger.Error("Failed to parse body",
-			slog.String("Error", err.Error()),
-		)
-		if errors.Is(err, carefulness.ErrMalformedRequest) {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest.JSONError())
-
-			return
-		}
-		if errors.Is(err, carefulness.ErrUnprocessableRequest) {
-			w.WriteHeader(422)
-			json.NewEncoder(w).Encode(carefulness.ErrUnprocessableRequest.JSONError())
-
-			return
-		}
-		if errors.Is(err, io.EOF) {
-			w.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(carefulness.JSONError{Error: "Data loss"})
-
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	dedupUUIDs := lo.FindDuplicates(req.QuizUUIDs)
-
-	pathes, err := c.testRepo.TestPathes(ctx, dedupUUIDs)
-	if err != nil {
-		logger.Error("get pathes for quizzes",
-			slog.String("Error", err.Error()),
-		)
-		if errors.Is(err, sql.ErrNoRows) {
-			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't find all pathes for quizzes"})
-			return
-		}
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't get pathes for quizzes"})
-		return
-	}
-
-	err = c.runner.UpsertQuiz(pathes, req.QuizUUIDs)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)                                 // all returned errors are user dependant anyways
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()}) // all errors are user readable anyway
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // DeleteTest implements [Service].
 func (c *chiService) DeleteTest(w http.ResponseWriter, r *http.Request) {
 	logger := logging.LoggerFromContext(r.Context()).With(
@@ -204,17 +136,22 @@ func (c *chiService) ExtendTest(w http.ResponseWriter, r *http.Request) {
 	ctx := logging.WithLogger(r.Context(), logger)
 	w.Header().Set("Content-Type", "application/json")
 
-	testUUID, ok := (r.Context().Value("uuid")).(uuid.UUID)
-	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "Unable to retrieve test uuid"})
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
 		return
 	}
-	logger = logger.With(slog.String("test_uuid", testUUID.String()))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
 	ctx = logging.WithLogger(ctx, logger)
 
 	var req contracts.ExtendTestRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err = json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		logger.Error("Failed to parse body",
 			slog.String("Error", err.Error()),
@@ -255,10 +192,18 @@ func (c *chiService) ExtendTest(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()}) //always parseError
 		return
 	}
-	err = c.runner.ExtendTime(extendBy)
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()}) // my own error
+		return
+	}
+
+	err = tr.ExtendTime(extendBy)
 	if err != nil {
 		w.WriteHeader(http.StatusLocked)
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()}) // my own error
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -403,7 +348,22 @@ func (c *chiService) PauseTest(w http.ResponseWriter, r *http.Request) {
 	// there is like nothing to return
 	w.Header().Set("Content-Type", "application/json")
 
-	err := c.runner.Pause()
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	err = tr.Pause()
 	if err != nil {
 		logger.Error("couldn't pause test", slog.String("Error", err.Error()))
 		w.WriteHeader(http.StatusLocked)
@@ -578,61 +538,6 @@ func (c *chiService) RemoveQuizzes(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (c *chiService) RemoveQuizzesFromRunning(w http.ResponseWriter, r *http.Request) {
-	logger := logging.LoggerFromContext(r.Context()).With(
-		slog.String("layer", "handler"),
-	)
-	w.Header().Set("Content-Type", "application/json")
-
-	var req contracts.RemoveQuizzesRequest
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil {
-		logger.Error("Failed to parse body",
-			slog.String("Error", err.Error()),
-		)
-		if errors.Is(err, carefulness.ErrMalformedRequest) {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest.JSONError())
-
-			return
-		}
-		if errors.Is(err, carefulness.ErrUnprocessableRequest) {
-			w.WriteHeader(422)
-			json.NewEncoder(w).Encode(carefulness.ErrUnprocessableRequest.JSONError())
-
-			return
-		}
-		if errors.Is(err, io.EOF) {
-			w.WriteHeader(http.StatusBadRequest)
-
-			return
-		}
-		if errors.Is(err, io.ErrUnexpectedEOF) {
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(carefulness.JSONError{Error: "Data loss"})
-
-			return
-		}
-
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-
-	err = c.runner.RemoveQuiz(req.QuizUUIDs)
-	if err != nil {
-		if errors.Is(err, testrunner.ErrQuizNotCached) {
-			w.WriteHeader(http.StatusMultiStatus)
-
-		} else {
-			w.WriteHeader(http.StatusBadRequest)
-		}
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()}) // all errors are user readable anyway
-		return
-	}
-
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // ResumeTest implements [Service].
 func (c *chiService) ResumeTest(w http.ResponseWriter, r *http.Request) {
 	logger := logging.LoggerFromContext(r.Context()).With(
@@ -641,7 +546,22 @@ func (c *chiService) ResumeTest(w http.ResponseWriter, r *http.Request) {
 	// there is like nothing to return
 	w.Header().Set("Content-Type", "application/json")
 
-	err := c.runner.Resume()
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	err = tr.Resume()
 	if err != nil {
 		logger.Error("couldn't resume test", slog.String("Error", err.Error()))
 		w.WriteHeader(http.StatusLocked)
@@ -744,7 +664,7 @@ func (c *chiService) StartTest(w http.ResponseWriter, r *http.Request) {
 		quizUUIDs[i] = quiz.UUID
 	})
 
-	err = c.runner.Start(ctx, duration, quizPathes, quizUUIDs, req.GroupsUUIDs, test.UUID)
+	_, err = c.manager.Start(ctx, duration, quizPathes, quizUUIDs, req.GroupsUUIDs, test.UUID)
 	if err != nil {
 		logger.Error("unable to start test", slog.String("Error", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)                                            // all returned errors are user dependant anyways
@@ -756,8 +676,28 @@ func (c *chiService) StartTest(w http.ResponseWriter, r *http.Request) {
 }
 
 // StopTest implements [Service].
-func (c *chiService) StopTest(w http.ResponseWriter, r *http.Request) { // behold, the smallest buisness handle!
-	c.runner.Stop()
+func (c *chiService) StopTest(w http.ResponseWriter, r *http.Request) {
+	logger := logging.LoggerFromContext(r.Context()).With(
+		slog.String("layer", "handler"),
+	)
+	w.Header().Set("Content-Type", "application/json")
+
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	tr.Stop()
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -779,7 +719,22 @@ func (c *chiService) GetQuizFromRunning(w http.ResponseWriter, r *http.Request) 
 	logger = logger.With(slog.String("quizUUID", quizUUID.String()))
 	ctx = logging.WithLogger(ctx, logger)
 
-	quizC, err := c.runner.Get(quizUUID)
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	quizC, err := tr.Get(quizUUID)
 	if err != nil {
 		logger.Error("couldn't retrive quiz", slog.String("Error", err.Error()))
 		w.WriteHeader(http.StatusInternalServerError)
@@ -788,15 +743,10 @@ func (c *chiService) GetQuizFromRunning(w http.ResponseWriter, r *http.Request) 
 	}
 
 	etag := strconv.FormatUint(quizC.Checksum, 10)
-	if deadline, err := c.runner.Deadline(); err == nil {
+	deadline := tr.Deadline()
 
-		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d, must-revalidate", int(math.Round(time.Until(*deadline).Hours()))))
-	} else {
-		logger.Warn("Couldn't cache quiz",
-			slog.String("Error", err.Error()),
-		)
-	}
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d, must-revalidate", int(math.Round(time.Until(deadline).Hours()))))
 
 	if match := r.Header.Get("If-None-Match"); match == etag {
 		w.WriteHeader(http.StatusNotModified) // caching goes brr
@@ -1072,43 +1022,45 @@ func (c *chiService) ImportTest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (c *chiService) GetTestUUID() uuid.UUID {
-	return c.runner.CurrentTestUUID()
-}
-
-func (c *chiService) GetDeadline() (*time.Time, error) {
-	return c.runner.Deadline()
-}
-
 func (c *chiService) GetRunningQuizzesUUIDs(w http.ResponseWriter, r *http.Request) {
 	logger := logging.LoggerFromContext(r.Context()).With(
 		slog.String("layer", "handler"),
 	)
 	w.Header().Set("Content-Type", "application/json")
 
-	checksum := c.runner.Checksum()
+	runnerKey, err := strconv.ParseUint(chi.URLParam(r, "runnerKey"), 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.ErrMalformedRequest)
+		return
+	}
+	logger = logger.With(slog.Uint64("runner_key", runnerKey))
+
+	tr, ok := c.manager.Get(runnerKey)
+	if !ok {
+		w.WriteHeader(http.StatusLocked)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: testrunner.ErrRunnerInactive.Error()})
+		return
+	}
+
+	checksum := tr.Checksum()
 	if checksum == 0 {
 		w.WriteHeader(http.StatusLocked)
 		return
 	}
 
 	etag := strconv.FormatUint(checksum, 10)
-	if deadline, err := c.runner.Deadline(); err == nil {
+	deadline := tr.Deadline()
 
-		w.Header().Set("ETag", etag)
-		w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d, must-revalidate", int(math.Round(time.Until(*deadline).Hours()))))
-	} else {
-		logger.Warn("Couldn't cache quiz",
-			slog.String("Error", err.Error()),
-		)
-	}
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d, must-revalidate", int(math.Round(time.Until(deadline).Hours()))))
 
 	if match := r.Header.Get("If-None-Match"); match == etag {
 		w.WriteHeader(http.StatusNotModified) // caching goes brrrrr
 		return
 	}
 
-	uuids := c.runner.GetAll()
+	uuids := tr.GetAll()
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(contracts.GetQuizzesUUIDs{
@@ -1123,30 +1075,51 @@ func (c *chiService) RunningInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	ctx := logging.WithLogger(r.Context(), logger)
 
-	testUUID := c.runner.CurrentTestUUID()
-	if testUUID == uuid.Nil {
-		w.WriteHeader(http.StatusLocked)
-		return
-	}
+	testUUIDs := c.manager.AllTests()
+	keys := c.manager.GetAll()
 
-	deadline, err := c.runner.Deadline()
-	if err != nil {
-		w.WriteHeader(http.StatusLocked)
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't get deadline"})
-		return
-	}
-
-	test, err := c.testRepo.Test(ctx, testUUID)
+	tests, err := c.testRepo.Tests(ctx, testUUIDs)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't select running test info"})
 		return
 	}
 
+	testInfos := make([]contracts.RunningInfo, len(tests))
+	for i, test := range tests {
+		tr, ok := c.manager.Get(keys[i])
+		if !ok {
+			continue
+		}
+
+		testInfos[i] = contracts.RunningInfo{
+			Key:      keys[i],
+			Deadline: tr.Deadline(),
+			IsPaused: tr.IsPaused(),
+			Test:     test,
+		}
+	}
+
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(contracts.RunningInfoResponse{
-		Test:     test,
-		Deadline: *deadline,
-		IsPaused: c.runner.IsPaused(),
+		TestInfos: testInfos,
 	})
+}
+
+func (c *chiService) GetDeadline(key uint64) (time.Time, error) {
+	tr, ok := c.manager.Get(key)
+	if !ok {
+		return time.Time{}, testrunner.ErrRunnerInactive
+	}
+
+	return tr.Deadline(), nil
+}
+
+func (c *chiService) GetTestUUID(key uint64) uuid.UUID {
+	tr, ok := c.manager.Get(key)
+	if !ok {
+		return uuid.Nil
+	}
+
+	return tr.Test()
 }

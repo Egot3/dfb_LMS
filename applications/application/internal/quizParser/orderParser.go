@@ -47,8 +47,8 @@ func OrderParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
 		answers[i] = slices.Index(shuffled, ord)
 	}
 
-	quizP.Options.Order = quiz.OptionsOrder{Items: shuffled}
-	quizP.Answer.Order = quiz.AnswerOrder{ItemIdxs: answers}
+	quizP.Options.Order = &quiz.OptionsOrder{Items: shuffled}
+	quizP.Answer.Order = &quiz.AnswerOrder{ItemIdxs: answers}
 
 	return nil
 }

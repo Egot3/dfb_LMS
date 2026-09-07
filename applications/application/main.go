@@ -21,14 +21,14 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
-
 	i := do.New(
-		do.Eager(cfg),
+		do.Eager(config.Load),
 		do.Lazy(logging.NewLogger),
 		database.DBPackage,
 		repositories.RepositoryPackage,
 	)
+
+	cfg := do.MustInvoke[*config.Config](i)
 
 	db := do.MustInvoke[*bun.DB](i)
 	if err := database.RunMigrations(context.Background(), db); err != nil {
@@ -53,7 +53,7 @@ func main() {
 		}
 	}
 
-	do.Provide(i, testrunner.NewTestRunner)
+	do.Provide(i, testrunner.NewManager)
 
 	do.Provide(i, handler.NewTestService)
 	do.Provide(i, server.ChiServer)

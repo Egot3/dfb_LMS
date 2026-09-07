@@ -80,7 +80,7 @@ func ChiServer(i do.Injector) (chi.Router, error) {
 		r.Route("/quiz", func(r chi.Router) {
 			r.Use(middlewares.JWT)
 
-			r.With(middleware.Maybe(middlewares.QuizNotRunning(svc.GetAllRunning), func(r *http.Request) bool {
+			r.With(middleware.Maybe(middlewares.QuizNotRunning(svc.IsRunning), func(r *http.Request) bool {
 				return (r.Method != http.MethodOptions) || !middlewares.IsTeacherCondition(r)
 			})).Get("/{quiz_uuid}/parsed", svc.ParsedQuiz)
 
@@ -112,7 +112,7 @@ func ChiServer(i do.Injector) (chi.Router, error) {
 
 			r.Get("/", svc.ListTests)
 
-			r.Route("/running", func(r chi.Router) {
+			r.Route("/running/{runnerKey:^[0-9]{1,20}$}", func(r chi.Router) {
 				r.Use(middleware.Maybe(
 					middlewares.IsInGroup(svc.GetTestUUID, svc.AllowedToTest, svc.GetDeadline), func(r *http.Request) bool {
 						return !middlewares.IsTeacherCondition(r)
@@ -124,16 +124,15 @@ func ChiServer(i do.Injector) (chi.Router, error) {
 				//protected
 				r.Group(func(r chi.Router) {
 					r.Use(middlewares.IsTeacherRights)
-					r.Post("/start", svc.StartTest)
 					r.Post("/stop", svc.StopTest)
 					r.Post("/pause", svc.PauseTest)
 					r.Post("/resume", svc.ResumeTest)
-					r.Post("/", svc.AddQuizzesToRunning)
-					r.Delete("/", svc.RemoveQuizzesFromRunning)
 					r.Post("/extend", svc.ExtendTest)
 				})
 
 			})
+
+			r.With(middlewares.IsTeacherRights).Post("/running/start", svc.StartTest)
 
 			r.Route("/{uuid}", func(r chi.Router) {
 				r.Use(middlewares.ParseUUID)
@@ -156,7 +155,7 @@ func ChiServer(i do.Injector) (chi.Router, error) {
 		r.Route("/total", func(r chi.Router) {
 			r.Use(middlewares.JWT)
 
-			r.Route("/{group_uuid}/{user_uuid}/running", func(r chi.Router) {
+			r.Route("/{group_uuid}/{user_uuid}/running/{runnerKey:^[0-9]{1,20}$}", func(r chi.Router) {
 				r.Use(middleware.Maybe(
 					middlewares.IsInGroup(svc.GetTestUUID, svc.AllowedToTest, svc.GetDeadline), func(r *http.Request) bool {
 						return !middlewares.IsTeacherCondition(r)

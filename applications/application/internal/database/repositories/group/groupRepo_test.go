@@ -32,7 +32,6 @@ func RegisterModels(db *bun.DB) {
 }
 
 func TestGroup_Creation(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -41,7 +40,6 @@ func TestGroup_Creation(t *testing.T) {
 	RegisterModels(db)
 
 	t.Run("New group", func(t *testing.T) {
-		t.Parallel()
 
 		name := rand.Text()
 		_, err := r.NewGroup(t.Context(), name)
@@ -54,7 +52,6 @@ func TestGroup_Creation(t *testing.T) {
 	})
 
 	t.Run("Existing group", func(t *testing.T) {
-		t.Parallel()
 
 		name := rand.Text()
 		_, err := r.NewGroup(t.Context(), name)
@@ -72,7 +69,6 @@ func TestGroup_Creation(t *testing.T) {
 }
 
 func TestGroup_Deletion(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -88,7 +84,6 @@ func TestGroup_Deletion(t *testing.T) {
 	err = db.NewSelect().Model(&group).Where("name = ?", name).Scan(t.Context())
 
 	t.Run("Existing group", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.DeleteGroup(t.Context(), group.UUID)
 		require.NoError(t, err)
@@ -99,7 +94,6 @@ func TestGroup_Deletion(t *testing.T) {
 	})
 
 	t.Run("Non-existing group", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.DeleteGroup(t.Context(), uuid.Nil)
 		require.Error(t, err)
@@ -109,7 +103,6 @@ func TestGroup_Deletion(t *testing.T) {
 }
 
 func TestGroup_Get(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -125,7 +118,6 @@ func TestGroup_Get(t *testing.T) {
 	err = db.NewSelect().Model(&group).Where("name = ?", name).Scan(t.Context())
 
 	t.Run("Existing group", func(t *testing.T) {
-		t.Parallel()
 
 		g, err := r.Group(t.Context(), group.UUID)
 		require.NoError(t, err)
@@ -136,7 +128,6 @@ func TestGroup_Get(t *testing.T) {
 	})
 
 	t.Run("Non-existing group", func(t *testing.T) {
-		t.Parallel()
 
 		_, err := r.Group(t.Context(), uuid.Nil)
 		require.Error(t, err)
@@ -145,7 +136,6 @@ func TestGroup_Get(t *testing.T) {
 }
 
 func TestGroup_Update(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -159,7 +149,6 @@ func TestGroup_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Non-existant quiz", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.UpdateGroup(t.Context(), uuid.Nil, "")
 		require.Error(t, err)
@@ -167,7 +156,6 @@ func TestGroup_Update(t *testing.T) {
 	})
 
 	t.Run("Existant quiz", func(t *testing.T) {
-		t.Parallel()
 
 		name := rand.Text()
 		err := r.UpdateGroup(t.Context(), groupUUID, name)
@@ -181,7 +169,6 @@ func TestGroup_Update(t *testing.T) {
 }
 
 func TestGroup_Append_users(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -195,7 +182,7 @@ func TestGroup_Append_users(t *testing.T) {
 	require.NoError(t, err)
 
 	var uuids uuid.UUIDs
-	for i := 0; i < mrand.IntN(8); i++ {
+	for i := 0; i < mrand.IntN(8)+1; i++ {
 		var userUUID uuid.UUID
 		err = db.NewInsert().Model(&models.User{Nickname: rand.Text(), PasswordHash: []byte{}}).
 			Returning("uuid").
@@ -205,21 +192,18 @@ func TestGroup_Append_users(t *testing.T) {
 	}
 
 	t.Run("Append non-existant user", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.AppendUsers(t.Context(), groupUUID, uuid.UUIDs{uuid.Nil})
 		require.Error(t, err)
 	})
 
 	t.Run("Append partially existing users", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.AppendUsers(t.Context(), groupUUID, append(uuids, uuid.Nil))
 		require.Error(t, err)
 	})
 
 	t.Run("Append users(duh)", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.AppendUsers(t.Context(), groupUUID, uuids)
 		require.NoError(t, err)
@@ -334,7 +318,6 @@ func BenchmarkGroup_Append_users(b *testing.B) {
 }
 
 func TestGroup_Remove_users(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 
@@ -348,7 +331,7 @@ func TestGroup_Remove_users(t *testing.T) {
 	require.NoError(t, err)
 
 	var users []models.User
-	for i := 0; i < mrand.IntN(8); i++ {
+	for i := 0; i < mrand.IntN(8)+1; i++ {
 		user := models.User{Nickname: rand.Text(), PasswordHash: []byte{}}
 		users = append(users, user)
 	}
@@ -367,21 +350,18 @@ func TestGroup_Remove_users(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Remove non-existant user", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.RemoveUsers(t.Context(), groupUUID, uuid.UUIDs{uuid.Nil})
 		require.Error(t, err)
 	})
 
 	t.Run("Remove partially existing users", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.RemoveUsers(t.Context(), groupUUID, append(uuids, uuid.Nil))
 		require.Error(t, err)
 	})
 
 	t.Run("Remove users(duh)", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.RemoveUsers(t.Context(), groupUUID, uuids)
 		require.NoError(t, err)
@@ -389,7 +369,6 @@ func TestGroup_Remove_users(t *testing.T) {
 }
 
 func TestGroups_Is_in(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithGroupRepo(t)
 

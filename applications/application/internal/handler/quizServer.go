@@ -23,7 +23,6 @@ import (
 
 	acceptutils "github.com/egot3/fathom/internal/acceptUtils"
 	"github.com/egot3/fathom/internal/carefulness"
-	"github.com/egot3/fathom/internal/config"
 	"github.com/egot3/fathom/internal/contracts"
 	exportutlis "github.com/egot3/fathom/internal/exportUtlis"
 	"github.com/egot3/fathom/internal/logging"
@@ -272,6 +271,28 @@ func (c *chiService) PostQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	abs, err := c.cfg.TurnToAbs(req.Name)
+	if err != nil {
+		logger.Error("couldn't turn filepath to abs", slog.String("Error", err.Error()))
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "unable to get absolute path of quiz"})
+		return
+	}
+
+	does, err := c.quizRepo.CheckRegistered(ctx, abs)
+	if err != nil {
+		logger.Error("couldn't check if quiz is registered", slog.String("Error", err.Error()))
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't check if quiz is registered"})
+		return
+	}
+	if does {
+		logger.Warn("quiz already exists")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(carefulness.Conflict{Conflictor: "Path"})
+		return
+	}
+
 	logger = logger.With(slog.String("name", req.Name))
 	ctx = logging.WithLogger(ctx, logger)
 
@@ -287,7 +308,7 @@ func (c *chiService) PostQuiz(w http.ResponseWriter, r *http.Request) {
 	var sb strings.Builder
 	sb.WriteString("---\n")
 	sb.Write(frontmatter)
-	sb.WriteString("---\n\n")
+	sb.WriteString("---\n")
 	sb.WriteString(req.Body)
 
 	quiz, err := quizparser.ParseQuiz(strings.NewReader(sb.String()))
@@ -295,14 +316,6 @@ func (c *chiService) PostQuiz(w http.ResponseWriter, r *http.Request) {
 		logger.Error("couldn't parse quiz", slog.String("Error", err.Error()))
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()})
-		return
-	}
-
-	abs, err := config.TurnToAbs(req.Name)
-	if err != nil {
-		logger.Error("couldn't turn filepath to abs", slog.String("Error", err.Error()))
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "unable to get absolute path of quiz"})
 		return
 	}
 
@@ -318,8 +331,18 @@ func (c *chiService) PostQuiz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		logger.Error("couldn't ensure quiz directory exists", slog.String("Error", err.Error()))
+
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "couldn't ensure quiz directory exists"})
+		return
+	}
 	err = os.WriteFile(abs, []byte(sb.String()), 0644)
 	if err != nil {
+		logger.Error("couldn't write file",
+			slog.String("Error", err.Error()),
+		)
 		w.WriteHeader(http.StatusMultiStatus)
 
 		json.NewEncoder(w).Encode(carefulness.JSONError{Error: "unable to write file"})
@@ -392,6 +415,10 @@ func (c *chiService) PatchQuiz(w http.ResponseWriter, r *http.Request) {
 
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+
+	if req.Name != nil && *req.Name == "" {
+		req.Name = nil
 	}
 
 	abs, err := c.quizRepo.QuizPath(ctx, quizUUID)
@@ -533,7 +560,7 @@ func (c *chiService) PatchQuiz(w http.ResponseWriter, r *http.Request) {
 
 	var newAbs *string = nil
 	if req.Name != nil {
-		if v, err := config.TurnToAbs(*req.Name); err == nil {
+		if v, err := c.cfg.TurnToAbs(*req.Name); err == nil {
 			newAbs = &v
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -544,6 +571,13 @@ func (c *chiService) PatchQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if newAbs != nil {
+		if err := os.MkdirAll(filepath.Dir(*newAbs), 0o755); err != nil {
+			logger.Error("couldn't ensure quiz directory exists", slog.String("Error", err.Error()))
+
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(carefulness.JSONError{Error: err.Error()})
+			return
+		}
 		err := os.Rename(abs, *newAbs)
 		if err != nil {
 			logger.Error("couldn't get rename to abs name", slog.String("Error", err.Error()))
@@ -757,7 +791,7 @@ func (c *chiService) ImportQuizBank(w http.ResponseWriter, r *http.Request) {
 	)
 	ctx = logging.WithLogger(ctx, logger)
 
-	tmpDir, err := os.MkdirTemp(config.PathToQuizzes, "tmp-")
+	tmpDir, err := os.MkdirTemp("", "tmp-")
 	if err != nil {
 		logger.Error("failed to create tmpDir",
 			slog.String("Error", err.Error()),
@@ -872,7 +906,7 @@ func (c *chiService) ImportQuizBank(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		err = os.Rename(tmpDir, filepath.Join(config.PathToQuizzes, handler.Filename[:len(handler.Filename)-4]))
+		err = os.Rename(tmpDir, filepath.Join("", handler.Filename[:len(handler.Filename)-4]))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case "application/tar":
@@ -974,7 +1008,7 @@ func (c *chiService) ImportQuizBank(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		err = os.Rename(tmpDir, filepath.Join(config.PathToQuizzes, handler.Filename[:len(handler.Filename)-4]))
+		err = os.Rename(tmpDir, filepath.Join("", handler.Filename[:len(handler.Filename)-4]))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	case "application/gzip":
@@ -1087,7 +1121,7 @@ func (c *chiService) ImportQuizBank(w http.ResponseWriter, r *http.Request) {
 
 		}
 
-		err = os.Rename(tmpDir, filepath.Join(config.PathToQuizzes, handler.Filename[:len(handler.Filename)-4]))
+		err = os.Rename(tmpDir, filepath.Join("", handler.Filename[:len(handler.Filename)-4]))
 		w.WriteHeader(http.StatusNoContent)
 		return
 	default:
@@ -1162,6 +1196,6 @@ func (c *chiService) ParsedQuiz(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *chiService) GetAllRunning() uuid.UUIDs {
-	return c.runner.GetAll()
+func (c *chiService) IsRunning(quiz uuid.UUID) bool {
+	return c.manager.IsQuizRunning(quiz)
 }

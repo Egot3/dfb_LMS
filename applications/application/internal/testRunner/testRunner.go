@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egot3/fathom/internal/carefulness"
 	"github.com/egot3/fathom/internal/hashutils"
 	"github.com/egot3/fathom/internal/logging"
 	"github.com/egot3/fathom/internal/quiz"
 	quizparser "github.com/egot3/fathom/internal/quizParser"
 	"github.com/google/uuid"
-	"github.com/samber/do/v2"
 	"github.com/samber/lo"
 )
 
@@ -27,6 +27,7 @@ var (
 	ErrRunnerNotPaused = errors.New("runner wasn't paused")
 	ErrRunnerExpired   = errors.New("runner expired")
 	ErrBadQuizzes      = errors.New("quizUUIDs and quizPathes lens differ")
+	ErrAlreadyRunning  = errors.New("test for this group is already running")
 )
 
 type NotCachedError struct {
@@ -44,31 +45,18 @@ func (e *NotCachedError) Is(target error) bool {
 type concreteTestRunner struct {
 	mu         sync.RWMutex
 	quizzes    []quiz.Quiz
-	generation uint64
-	cancel     context.CancelFunc
 	timer      *time.Timer
 	isPaused   bool
 	deadline   time.Time
 	pausedAt   time.Time
-	TestUUID   uuid.UUID
-	GroupUUIDs uuid.UUIDs
 	checksum   uint64
 	giveup     chan struct{}
+	cleanup    func()
+	groupUUIDs uuid.UUIDs
+	testUUID   uuid.UUID
 }
 
-func NewTestRunner(i do.Injector) (TestRunner, error) {
-	return &concreteTestRunner{
-		generation: 0,
-	}, nil
-}
-
-func (tr *concreteTestRunner) CurrentTestUUID() uuid.UUID {
-	tr.mu.RLock()
-	defer tr.mu.RUnlock()
-	return tr.TestUUID
-}
-
-func (tr *concreteTestRunner) Start(ctx context.Context, duration time.Duration, quizPaths []string, quizUUIDs, groupUUIDs uuid.UUIDs, testUUID uuid.UUID) error {
+func (tr *concreteTestRunner) start(ctx context.Context, duration time.Duration, quizPaths []string, quizUUIDs, groupUUIDs uuid.UUIDs, testUUID uuid.UUID, cleanup func()) error {
 	if len(quizPaths) != len(quizUUIDs) {
 		return ErrBadQuizzes
 	}
@@ -77,8 +65,6 @@ func (tr *concreteTestRunner) Start(ctx context.Context, duration time.Duration,
 		slog.String("duration", duration.String()),
 		slog.Any("quizPathes", quizPaths),
 		slog.Any("quizUUIDs", quizUUIDs.Strings()),
-		slog.Any("groupUUIDs", groupUUIDs.Strings()),
-		slog.String("testUUID", testUUID.String()),
 	)
 
 	logger.Debug("starting runner...")
@@ -87,7 +73,7 @@ func (tr *concreteTestRunner) Start(ctx context.Context, duration time.Duration,
 	for i, path := range quizPaths {
 		err := func() error {
 			if !filepath.IsAbs(path) {
-				return fmt.Errorf("unsupported path scheme %q: only local paths are currently supported", path) //registry is not implemented
+				return carefulness.ErrAbsoluteRequired
 			}
 			f, err := os.Open(path)
 			if err != nil {
@@ -120,45 +106,34 @@ func (tr *concreteTestRunner) Start(ctx context.Context, duration time.Duration,
 		tr.timer.Stop()
 	}
 
+	tr.testUUID = testUUID
+
 	tr.checksum = hashutils.HashHashes(ultimateChecksum)
-	tr.TestUUID = testUUID
 	tr.quizzes = quizzes
 	tr.isPaused = false
 	tr.deadline = time.Now().Add(duration)
-
-	tr.generation++
-	gen := tr.generation
 
 	tr.timer = time.NewTimer(time.Until(tr.deadline))
 
 	tr.giveup = make(chan struct{})
 	stop := tr.giveup
 
-	go func(gen uint64, t *time.Timer, stop <-chan struct{}) {
+	go func(t *time.Timer, stop <-chan struct{}, cleanup func()) {
 		select {
 		case <-t.C:
-			tr.cleanup(gen)
+			cleanup()
 		case <-stop:
-			tr.cleanup(gen)
+			cleanup()
 		}
 		logger.Info("test stopped!")
-	}(gen, tr.timer, stop)
+	}(tr.timer, stop, cleanup)
 	tr.mu.Unlock()
 
 	return nil
 }
 
-func (tr *concreteTestRunner) cleanup(gen uint64) {
-	tr.mu.Lock()
-	defer tr.mu.Unlock()
-	if tr.generation == gen {
-		tr.quizzes = nil
-
-		tr.giveup = nil
-
-		tr.TestUUID = uuid.Nil
-		tr.checksum = 0
-	}
+func (tr *concreteTestRunner) Test() uuid.UUID {
+	return tr.testUUID
 }
 
 func (tr *concreteTestRunner) Get(quizUUID uuid.UUID) (*quiz.Quiz, error) {
@@ -282,7 +257,7 @@ func (tr *concreteTestRunner) ExtendTime(duration time.Duration) error {
 	tr.deadline = tr.deadline.Add(duration)
 	if !tr.isPaused {
 		if !tr.timer.Stop() {
-			tr.generation++
+			return ErrRunnerNotPaused
 		}
 		tr.timer.Reset(time.Until(tr.deadline))
 	}
@@ -353,19 +328,11 @@ func (tr *concreteTestRunner) IsPaused() bool {
 	return tr.isPaused
 }
 
-func (tr *concreteTestRunner) Deadline() (*time.Time, error) {
+func (tr *concreteTestRunner) Deadline() time.Time {
 	tr.mu.RLock()
 	defer tr.mu.RUnlock()
 
-	if tr.giveup == nil {
-		return nil, ErrRunnerInactive
-	}
-
-	return &tr.deadline, nil
-}
-
-func (tr *concreteTestRunner) AllowedGroupUUIDs() uuid.UUIDs {
-	return tr.GroupUUIDs
+	return tr.deadline
 }
 
 func (tr *concreteTestRunner) GetAll() uuid.UUIDs {
@@ -381,5 +348,24 @@ func (tr *concreteTestRunner) GetAll() uuid.UUIDs {
 }
 
 func (tr *concreteTestRunner) Checksum() uint64 {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+
 	return tr.checksum
+}
+
+func (tr *concreteTestRunner) Quizzes() uuid.UUIDs {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+
+	return lo.Map(tr.quizzes, func(item quiz.Quiz, _ int) uuid.UUID {
+		return item.UUID
+	})
+}
+
+func (tr *concreteTestRunner) Groups() uuid.UUIDs {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+
+	return tr.groupUUIDs
 }

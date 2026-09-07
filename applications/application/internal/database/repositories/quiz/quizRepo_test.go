@@ -30,7 +30,6 @@ func NewInjectorWithQuizRepo(t *testing.T) do.Injector {
 }
 
 func TestQuiz_Register(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithQuizRepo(t)
 
@@ -38,7 +37,6 @@ func TestQuiz_Register(t *testing.T) {
 	db := do.MustInvoke[*bun.DB](i)
 
 	t.Run("Valid quiz", func(t *testing.T) {
-		t.Parallel()
 
 		path := "/usr/" + rand.Text() + "/path/to/quiz.md"
 		err := r.RegisterQuiz(t.Context(), path, [8]byte{}, 1, []byte("121321"))
@@ -52,14 +50,12 @@ func TestQuiz_Register(t *testing.T) {
 		require.Equal(t, quiz.CorrectAnswer, "121321")
 	})
 	t.Run("Not abs path", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.RegisterQuiz(t.Context(), "path.md", [8]byte{}, 1, []byte{})
 		require.Error(t, err)
 		require.ErrorIs(t, err, carefulness.ErrAbsoluteRequired)
 	})
 	t.Run("Not md", func(t *testing.T) {
-		t.Parallel()
 
 		err := r.RegisterQuiz(t.Context(), "/usr/path/to/cooler_quiz.mdx", [8]byte{}, 1, []byte{})
 		require.Error(t, err)
@@ -68,7 +64,6 @@ func TestQuiz_Register(t *testing.T) {
 }
 
 func TestQuiz_Deallocate(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithQuizRepo(t)
 
@@ -98,7 +93,6 @@ func TestQuiz_Deallocate(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			err = r.DeallocateQuiz(context.Background(), tC.uuid)
 			if tC.expectNotFound {
@@ -115,7 +109,6 @@ func TestQuiz_Deallocate(t *testing.T) {
 }
 
 func TestQuiz_Check_registered(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithQuizRepo(t)
 
@@ -156,7 +149,6 @@ func TestQuiz_Check_registered(t *testing.T) {
 }
 
 func TestQuiz_Check_integrity(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithQuizRepo(t)
 
@@ -208,7 +200,6 @@ func TestQuiz_Check_integrity(t *testing.T) {
 }
 
 func TestQuiz_List(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithQuizRepo(t)
 

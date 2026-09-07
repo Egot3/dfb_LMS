@@ -45,8 +45,8 @@ func ParseFrontmatter(scanner *bufio.Scanner) (quiz.Frontmatter, error) {
 	if fm.Kind == "" {
 		return fm, fmt.Errorf("mising entry in frontmatter: kind")
 	}
-	if fm.Score == 0 {
-		return fm, fmt.Errorf("missing score/score set to zero in frontmatter")
+	if fm.Score <= 0 {
+		return fm, fmt.Errorf("missing score/score set to zero(or lower) in frontmatter")
 	}
 
 	return fm, nil

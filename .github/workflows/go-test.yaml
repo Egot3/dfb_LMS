@@ -2,29 +2,32 @@ name: Go Test Workflow
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - "main"
+      - "*/backend/**"
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   test:
     runs-on: ubuntu-latest
     defaults:
-          run:
-            working-directory: ./applications/application
+      run:
+        working-directory: ./applications/application
 
     steps:
-    - name: Check out repository code
-      uses: actions/checkout@v7
+      - name: Check out repository code
+        uses: actions/checkout@v7
 
-    - name: Setup Go environment
-      uses: actions/setup-go@v7
-      with:
-        go-version: '1.27'
-        cache: true
+      - name: Setup Go environment
+        uses: actions/setup-go@v7
+        with:
+          cache: true
+          cache-dependency-path: applications/application/go.sum
+          go-version-file: applications/application/go.mod
 
-    - name: Install dependencies
-      run: go mod download
+      - name: Install dependencies
+        run: go mod download
 
-    - name: Run Tests
-      run: sudo $(which go) test -v -race -covermode=atomic -coverprofile=coverage.txt ./...
+      - name: Run Tests
+        run: sudo $(which go) test -v -race -covermode=atomic -coverprofile=coverage.txt ./...

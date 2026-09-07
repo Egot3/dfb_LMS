@@ -2,10 +2,11 @@ package testutils
 
 import (
 	"database/sql"
-	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/egot3/fathom/internal/config"
+	"github.com/egot3/fathom/internal/models"
 	"github.com/samber/do/v2"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -16,7 +17,7 @@ import (
 func NewTestInjector(tb testing.TB, packages ...func(do.Injector)) do.Injector {
 	tb.Helper()
 
-	config.PathToQuizzes = os.TempDir()
+	cfg := &config.Config{QuizPath: filepath.Join(tb.TempDir(), "quizzes")}
 
 	dsn := "file::memory:?cache=private"
 
@@ -30,6 +31,8 @@ func NewTestInjector(tb testing.TB, packages ...func(do.Injector)) do.Injector {
 	err = RunMigrations(tb.Context(), db)
 	require.NoError(tb, err)
 
+	RegisterModels(db)
+
 	tb.Cleanup(func() {
 		err := db.Close()
 		if err != nil {
@@ -41,9 +44,17 @@ func NewTestInjector(tb testing.TB, packages ...func(do.Injector)) do.Injector {
 		packages...,
 	)
 
+	do.ProvideValue(i, cfg)
+
 	do.Provide(i, func(i do.Injector) (*bun.DB, error) {
 		return db, nil
 	})
 
 	return i
+}
+
+func RegisterModels(db *bun.DB) {
+	db.RegisterModel((*models.GroupsUsers)(nil))
+	db.RegisterModel((*models.TestsQuizzes)(nil))
+	db.RegisterModel((*models.GroupsUsers)(nil))
 }

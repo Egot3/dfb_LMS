@@ -19,8 +19,8 @@ type OptionsOrder struct {
 }
 
 type QuizOptions struct {
-	Radio      OptionsRadioAndCheck `json:"radio,omitzero"`
-	Check      OptionsRadioAndCheck `json:"check,omitzero"`
-	Accordance OptionsAccordance    `json:"accordance,omitzero"`
-	Order      OptionsOrder         `json:"orders,omitzero"`
+	Radio      *OptionsRadioAndCheck `json:"radio,omitempty"`
+	Check      *OptionsRadioAndCheck `json:"check,omitempty"`
+	Accordance *OptionsAccordance    `json:"accordance,omitempty"`
+	Order      *OptionsOrder         `json:"orders,omitempty"`
 }

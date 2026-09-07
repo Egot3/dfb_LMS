@@ -27,6 +27,9 @@ func TestQuiz(t *testing.T) *os.File {
 	_, err = f.Write(pb)
 	require.NoError(t, err)
 
+	_, err = f.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+
 	return f
 }
 

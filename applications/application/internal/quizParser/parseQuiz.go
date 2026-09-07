@@ -62,8 +62,6 @@ func ParseQuiz(reader io.Reader) (*quiz.Quiz, error) {
 	return &q, nil
 }
 
-// P.S. on parts where I am putting comments, my brain melts
-
 func ParseBody(scanner *bufio.Scanner) string {
 	var sb strings.Builder
 	for scanner.Scan() {

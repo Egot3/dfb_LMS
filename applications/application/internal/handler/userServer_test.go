@@ -29,10 +29,8 @@ import (
 )
 
 func TestUserHandler_Register(t *testing.T) {
-	t.Parallel()
 
 	t.Run("General test cases", func(t *testing.T) {
-		t.Parallel()
 
 		generalTestCases := []struct {
 			desc       string
@@ -61,13 +59,12 @@ func TestUserHandler_Register(t *testing.T) {
 		}
 		for _, gtt := range generalTestCases {
 			t.Run(gtt.desc, func(t *testing.T) {
-				t.Parallel()
 
 				i := testutils.NewTestInjector(t,
 					repositories.RepositoryPackage,
 				)
 				do.ProvideValue(i, slog.Default())
-				do.Provide(i, testrunner.NewTestRunner)
+				do.Provide(i, testrunner.NewManager)
 
 				do.Provide(i, handler.NewTestService)
 				router, err := server.ChiServer(i)
@@ -147,14 +144,13 @@ func TestUserHandler_Register(t *testing.T) {
 		}
 		for _, ptt := range passwordTestCases {
 			t.Run(ptt.desc, func(t *testing.T) {
-				t.Parallel()
 
 				i := testutils.NewTestInjector(t,
 					repositories.RepositoryPackage,
 				)
 				do.ProvideValue(i, slog.Default())
 
-				do.Provide(i, testrunner.NewTestRunner)
+				do.Provide(i, testrunner.NewManager)
 
 				do.Provide(i, handler.NewTestService)
 				router, err := server.ChiServer(i)
@@ -181,13 +177,12 @@ func TestUserHandler_Register(t *testing.T) {
 	})
 
 	t.Run("Conflict!", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
@@ -222,13 +217,12 @@ func TestUserHandler_Register(t *testing.T) {
 }
 
 func TestUserHandler_Login(t *testing.T) {
-	t.Parallel()
 
 	i := testutils.NewTestInjector(t,
 		repositories.RepositoryPackage,
 	)
 	do.ProvideValue(i, slog.Default())
-	do.Provide(i, testrunner.NewTestRunner)
+	do.Provide(i, testrunner.NewManager)
 
 	db := do.MustInvoke[*bun.DB](i)
 
@@ -279,7 +273,6 @@ func TestUserHandler_Login(t *testing.T) {
 	}
 	for _, ltt := range testCases {
 		t.Run(ltt.desc, func(t *testing.T) {
-			t.Parallel()
 
 			i := i.Scope(ltt.desc)
 
@@ -305,13 +298,12 @@ func TestUserHandler_Login(t *testing.T) {
 }
 
 func TestUserHandler_Get(t *testing.T) {
-	t.Parallel()
 
 	i := testutils.NewTestInjector(t,
 		repositories.RepositoryPackage,
 	)
 	do.ProvideValue(i, slog.Default())
-	do.Provide(i, testrunner.NewTestRunner)
+	do.Provide(i, testrunner.NewManager)
 
 	db := do.MustInvoke[*bun.DB](i)
 
@@ -324,7 +316,6 @@ func TestUserHandler_Get(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Found", func(t *testing.T) {
-		t.Parallel()
 
 		i := i.Scope(t.Name())
 
@@ -352,7 +343,6 @@ func TestUserHandler_Get(t *testing.T) {
 		require.Equal(t, user.Nickname, retUser.Nickname)
 	})
 	t.Run("Not found", func(t *testing.T) {
-		t.Parallel()
 
 		i := i.Scope(t.Name())
 
@@ -375,13 +365,12 @@ func TestUserHandler_Get(t *testing.T) {
 }
 
 func TestUserHandler_List(t *testing.T) {
-	t.Parallel()
 
 	i := testutils.NewTestInjector(t,
 		repositories.RepositoryPackage,
 	)
 	do.ProvideValue(i, slog.Default())
-	do.Provide(i, testrunner.NewTestRunner)
+	do.Provide(i, testrunner.NewManager)
 
 	db := do.MustInvoke[*bun.DB](i)
 
@@ -397,7 +386,6 @@ func TestUserHandler_List(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Listing users", func(t *testing.T) {
-		t.Parallel()
 
 		do.Provide(i, handler.NewTestService)
 		router, err := server.ChiServer(i)
@@ -429,16 +417,14 @@ func TestUserHandler_List(t *testing.T) {
 }
 
 func TestUserHandler_Delete(t *testing.T) {
-	t.Parallel()
 
 	t.Run("Self", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -481,13 +467,12 @@ func TestUserHandler_Delete(t *testing.T) {
 	})
 
 	t.Run("By teacher", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -529,13 +514,12 @@ func TestUserHandler_Delete(t *testing.T) {
 	})
 
 	t.Run("By not permitted", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -577,13 +561,12 @@ func TestUserHandler_Delete(t *testing.T) {
 	})
 
 	t.Run("Not found", func(t *testing.T) {
-		t.Parallel()
 
 		i := testutils.NewTestInjector(t,
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -626,7 +609,7 @@ func TestUserHandler_Delete(t *testing.T) {
 }
 
 func TestUserHandler_Patch(t *testing.T) {
-	// t.Parallel()
+	//
 	testCases := []struct {
 		desc           string
 		changeNickname bool
@@ -655,13 +638,13 @@ func TestUserHandler_Patch(t *testing.T) {
 	}
 	for _, ptt := range testCases {
 		t.Run(ptt.desc, func(t *testing.T) {
-			//t.Parallel()
+			//
 
 			i := testutils.NewTestInjector(t,
 				repositories.RepositoryPackage,
 			)
 			do.ProvideValue(i, slog.Default())
-			do.Provide(i, testrunner.NewTestRunner)
+			do.Provide(i, testrunner.NewManager)
 			do.Provide(i, handler.NewTestService)
 
 			db := do.MustInvoke[*bun.DB](i)
@@ -742,7 +725,7 @@ func TestUserHandler_Patch(t *testing.T) {
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -795,7 +778,7 @@ func TestUserHandler_Patch(t *testing.T) {
 			repositories.RepositoryPackage,
 		)
 		do.ProvideValue(i, slog.Default())
-		do.Provide(i, testrunner.NewTestRunner)
+		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
 		db := do.MustInvoke[*bun.DB](i)
@@ -852,7 +835,7 @@ func TestUserHandler_Patch(t *testing.T) {
 				repositories.RepositoryPackage,
 			)
 			do.ProvideValue(i, slog.Default())
-			do.Provide(i, testrunner.NewTestRunner)
+			do.Provide(i, testrunner.NewManager)
 			do.Provide(i, handler.NewTestService)
 
 			db := do.MustInvoke[*bun.DB](i)
@@ -908,7 +891,7 @@ func TestUserHandler_Patch(t *testing.T) {
 				repositories.RepositoryPackage,
 			)
 			do.ProvideValue(i, slog.Default())
-			do.Provide(i, testrunner.NewTestRunner)
+			do.Provide(i, testrunner.NewManager)
 			do.Provide(i, handler.NewTestService)
 
 			db := do.MustInvoke[*bun.DB](i)

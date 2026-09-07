@@ -27,7 +27,6 @@ func NewInjectorWithUserRepo(t *testing.T) do.Injector {
 }
 
 func TestUser_Register(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -51,7 +50,6 @@ func TestUser_Register(t *testing.T) {
 }
 
 func TestUser_Login(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -96,17 +94,14 @@ func TestUser_Login(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			user, err := r.Login(t.Context(), tC.nickname, tC.password)
 
 			if tC.ExpectFail {
-				require.Nil(t, user)
 				require.Error(t, err)
 				require.ErrorIs(t, err, sql.ErrNoRows)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, user)
 				require.Equal(t, origUser.UUID, user.UUID)
 			}
 		})
@@ -114,7 +109,6 @@ func TestUser_Login(t *testing.T) {
 }
 
 func TestUser_User(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -148,14 +142,13 @@ func TestUser_User(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			userR, err := r.User(t.Context(), tC.uuid)
 
 			if tC.ExpectNotFound {
 				require.True(t, errors.Is(err, sql.ErrNoRows))
 			} else {
-				require.Equal(t, &models.User{
+				require.Equal(t, models.User{
 					Nickname:     user.Nickname,
 					UUID:         user.UUID,
 					IsTeacher:    user.IsTeacher,
@@ -167,7 +160,6 @@ func TestUser_User(t *testing.T) {
 }
 
 func TestUser_Exists(t *testing.T) { // usage: JWT
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -202,7 +194,6 @@ func TestUser_Exists(t *testing.T) { // usage: JWT
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			found, err := r.Exists(t.Context(), tC.uuid)
 			require.NoError(t, err)
@@ -217,7 +208,6 @@ func TestUser_Exists(t *testing.T) { // usage: JWT
 }
 
 func TestUser_Delete(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -251,7 +241,6 @@ func TestUser_Delete(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			err := r.DeleteUser(t.Context(), tC.uuid)
 
@@ -270,7 +259,6 @@ func TestUser_Delete(t *testing.T) {
 }
 
 func TestUser_IsTeacher(t *testing.T) { // usage: JWT
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -315,7 +303,6 @@ func TestUser_IsTeacher(t *testing.T) { // usage: JWT
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			isTeacher, err := r.IsTeacher(t.Context(), tC.uuid)
 			require.NoError(t, err)
@@ -331,7 +318,6 @@ func TestUser_IsTeacher(t *testing.T) { // usage: JWT
 }
 
 func TestUser_Update(t *testing.T) {
-	t.Parallel()
 
 	i := NewInjectorWithUserRepo(t)
 
@@ -348,7 +334,6 @@ func TestUser_Update(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("Not found", func(t *testing.T) {
-		t.Parallel()
 
 	})
 
@@ -386,7 +371,6 @@ func TestUser_Update(t *testing.T) {
 	}
 	for _, tC := range testCases {
 		t.Run(tC.desc, func(t *testing.T) {
-			t.Parallel()
 
 			user := models.User{Nickname: rand.Text(), PasswordHash: passwordHash}
 			err = db.NewInsert().
