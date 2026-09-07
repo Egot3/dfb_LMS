@@ -24,6 +24,8 @@ jobs:
         with:
           go-version: "1.27"
           cache: true
+          cache-dependency-path: applications/application/go.sum
+          go-version-file: applications/application/go.mod
 
       - name: Install dependencies
         run: go mod download
