@@ -10,7 +10,7 @@ import (
 )
 
 func RadioParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
-	quizP.Options.Radio = quiz.OptionsRadioAndCheck{Choices: []quiz.Choice{}}
+	quizP.Options.Radio = &quiz.OptionsRadioAndCheck{Choices: []quiz.Choice{}}
 	quizP.Answer.Radio.ChoiceIdx = -1
 
 	for {

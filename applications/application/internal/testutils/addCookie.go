@@ -12,6 +12,8 @@ import (
 )
 
 func AddTeacherCookie(t *testing.T, req *http.Request) {
+	t.Helper()
+
 	token, err := jwtutils.GenerateToken(uuid.Nil, true)
 	require.NoError(t, err)
 

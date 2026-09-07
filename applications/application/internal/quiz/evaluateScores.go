@@ -2,7 +2,7 @@ package quiz
 
 import "slices"
 
-func evaluateInput(required, factual AnswerInput, score int) float32 {
+func evaluateInput(required, factual *AnswerInput, score int) float32 {
 	if required.Input == factual.Input {
 		return float32(score)
 	}
@@ -10,7 +10,7 @@ func evaluateInput(required, factual AnswerInput, score int) float32 {
 	return 0
 }
 
-func evaluateRadio(required, factual AnswerRadio, score int) float32 {
+func evaluateRadio(required, factual *AnswerRadio, score int) float32 {
 	if required.ChoiceIdx == factual.ChoiceIdx {
 		return float32(score)
 	}
@@ -18,7 +18,7 @@ func evaluateRadio(required, factual AnswerRadio, score int) float32 {
 	return 0
 }
 
-func evaluateCheck(required, factual AnswerCheck, score int) float32 {
+func evaluateCheck(required, factual *AnswerCheck, score int) float32 {
 	total := float32(0)
 	if len(required.ChoiceIdxs) < len(factual.ChoiceIdxs) {
 		return 0
@@ -35,7 +35,7 @@ func evaluateCheck(required, factual AnswerCheck, score int) float32 {
 	return float32(score) * (total / float32(iterDist))
 }
 
-func evaluateAllOrNoneCheck(required, factual AnswerCheck, score int) float32 {
+func evaluateAllOrNoneCheck(required, factual *AnswerCheck, score int) float32 {
 	if len(required.ChoiceIdxs) < len(factual.ChoiceIdxs) {
 		return 0
 	}
@@ -51,7 +51,7 @@ func evaluateAllOrNoneCheck(required, factual AnswerCheck, score int) float32 {
 	return float32(score)
 }
 
-func evaluateOrder(required, factual AnswerOrder, score int) float32 {
+func evaluateOrder(required, factual *AnswerOrder, score int) float32 {
 	total := float32(0)
 	if len(required.ItemIdxs) < len(factual.ItemIdxs) {
 		return 0
@@ -68,7 +68,7 @@ func evaluateOrder(required, factual AnswerOrder, score int) float32 {
 	return float32(score) * (total / float32(iterDist))
 }
 
-func evaluateAllOrNoneOrder(required, factual AnswerOrder, score int) float32 {
+func evaluateAllOrNoneOrder(required, factual *AnswerOrder, score int) float32 {
 	if len(required.ItemIdxs) < len(factual.ItemIdxs) {
 		return 0
 	}
@@ -84,7 +84,7 @@ func evaluateAllOrNoneOrder(required, factual AnswerOrder, score int) float32 {
 	return float32(score)
 }
 
-func evaluateAccordance(required, factual AnswerAccordance, score int) float32 {
+func evaluateAccordance(required, factual *AnswerAccordance, score int) float32 {
 	total := float32(0)
 	if len(required.Accordance) < len(factual.Accordance) {
 		return 0
@@ -101,7 +101,7 @@ func evaluateAccordance(required, factual AnswerAccordance, score int) float32 {
 	return float32(score) * (total / float32(iterDist))
 }
 
-func evaluateAllOrNoneAccordance(required, factual AnswerAccordance, score int) float32 {
+func evaluateAllOrNoneAccordance(required, factual *AnswerAccordance, score int) float32 {
 	if slices.Equal(required.Accordance, factual.Accordance) {
 		return float32(score)
 	}

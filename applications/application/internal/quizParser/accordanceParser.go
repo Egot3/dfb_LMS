@@ -65,8 +65,8 @@ func AccordanceParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
 		answers[i] = slices.Index(shuffled, ord)
 	}
 
-	quizP.Options.Accordance = quiz.OptionsAccordance{Static: keys, Dynamic: shuffled}
-	quizP.Answer.Accordance = quiz.AnswerAccordance{Accordance: answers}
+	quizP.Options.Accordance = &quiz.OptionsAccordance{Static: keys, Dynamic: shuffled}
+	quizP.Answer.Accordance = &quiz.AnswerAccordance{Accordance: answers}
 
 	return nil
 }

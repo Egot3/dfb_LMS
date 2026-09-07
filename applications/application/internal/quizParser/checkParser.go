@@ -10,8 +10,8 @@ import (
 )
 
 func CheckParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
-	quizP.Options.Check = quiz.OptionsRadioAndCheck{Choices: make([]quiz.Choice, 0)}
-	quizP.Answer.Check = quiz.AnswerCheck{ChoiceIdxs: make([]int, 0)}
+	quizP.Options.Check = &quiz.OptionsRadioAndCheck{Choices: make([]quiz.Choice, 0)}
+	quizP.Answer.Check = &quiz.AnswerCheck{ChoiceIdxs: make([]int, 0)}
 	for id := 0; ; {
 		line := reader.Text()
 		trimmedLine := strings.TrimSpace(line)
