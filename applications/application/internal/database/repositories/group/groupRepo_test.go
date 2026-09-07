@@ -182,7 +182,7 @@ func TestGroup_Append_users(t *testing.T) {
 	require.NoError(t, err)
 
 	var uuids uuid.UUIDs
-	for i := 0; i < mrand.IntN(8); i++ {
+	for i := 0; i < mrand.IntN(8)+1; i++ {
 		var userUUID uuid.UUID
 		err = db.NewInsert().Model(&models.User{Nickname: rand.Text(), PasswordHash: []byte{}}).
 			Returning("uuid").
@@ -331,7 +331,7 @@ func TestGroup_Remove_users(t *testing.T) {
 	require.NoError(t, err)
 
 	var users []models.User
-	for i := 0; i < mrand.IntN(8); i++ {
+	for i := 0; i < mrand.IntN(8)+1; i++ {
 		user := models.User{Nickname: rand.Text(), PasswordHash: []byte{}}
 		users = append(users, user)
 	}
