@@ -11,7 +11,7 @@ import (
 
 func RadioParser(reader *bufio.Scanner, quizP *quiz.Quiz) error {
 	quizP.Options.Radio = &quiz.OptionsRadioAndCheck{Choices: []quiz.Choice{}}
-	quizP.Answer.Radio.ChoiceIdx = -1
+	quizP.Answer.Radio = &quiz.AnswerRadio{ChoiceIdx: -1}
 
 	for {
 		line := reader.Text()

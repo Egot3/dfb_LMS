@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	mrand "math/rand/v2"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1122,9 +1123,9 @@ func TestTotalHandler_PostAnswer(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running/%v",
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d/%v",
 				groupUUID, userUUID,
-				quizUUID,
+				mrand.Uint64(), quizUUID,
 			),
 			bytes.NewReader(reqJSON),
 		)
@@ -1251,8 +1252,6 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[*testrunner.Manager](i)
-
 		db := do.MustInvoke[*bun.DB](i)
 
 		userUUID := randomUser(t, db)
@@ -1268,9 +1267,6 @@ func TestTotalHandler_Totalize(t *testing.T) {
 			QuizUUID: quizUUID,
 			Position: 1,
 		}).Exec(t.Context())
-		require.NoError(t, err)
-
-		_, err = r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
@@ -1291,10 +1287,22 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		router, err := server.ChiServer(i)
 		require.NoError(t, err)
 
+		m := do.MustInvoke[*testrunner.Manager](i)
+
+		tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+		require.NoError(t, err)
+
+		all := m.GetAll()
+		require.Len(t, all, 1)
+		key := all[0]
+		trc, ok := m.Get(key)
+		require.True(t, ok)
+		require.Equal(t, trc, tr)
+
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running",
-				groupUUID, userUUID,
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+				groupUUID, userUUID, key,
 			),
 			nil,
 		)
@@ -1348,8 +1356,8 @@ func TestTotalHandler_Totalize(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			fmt.Sprintf("/api/v1/total/%v/%v/running",
-				groupUUID, userUUID,
+			fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+				groupUUID, userUUID, mrand.Uint64(),
 			),
 			nil,
 		)
@@ -1369,8 +1377,6 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		do.Provide(i, testrunner.NewManager)
 		do.Provide(i, handler.NewTestService)
 
-		r := do.MustInvoke[*testrunner.Manager](i)
-
 		db := do.MustInvoke[*bun.DB](i)
 
 		userUUID := randomUser(t, db)
@@ -1386,7 +1392,6 @@ func TestTotalHandler_Totalize(t *testing.T) {
 		}).Exec(t.Context())
 		require.NoError(t, err)
 
-		_, err = r.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
 		require.NoError(t, err)
 
 		_, err = db.NewInsert().Model(&models.GroupsUsers{
@@ -1430,10 +1435,25 @@ func TestTotalHandler_Totalize(t *testing.T) {
 				})
 				require.NoError(t, err)
 
+				i := i.Scope(tC.desc)
+				do.Provide(i, testrunner.NewManager)
+
+				m := do.MustInvoke[*testrunner.Manager](i)
+
+				tr, err := m.Start(t.Context(), 30*time.Second, []string{path}, uuid.UUIDs{quizUUID}, uuid.UUIDs{groupUUID}, testUUID)
+				require.NoError(t, err)
+
+				all := m.GetAll()
+				require.Len(t, all, 1)
+				key := all[0]
+				trc, ok := m.Get(key)
+				require.True(t, ok)
+				require.Equal(t, trc, tr)
+
 				req := httptest.NewRequest(
 					http.MethodPost,
-					fmt.Sprintf("/api/v1/total/%v/%v/running",
-						tC.groupUUID, tC.userUUID,
+					fmt.Sprintf("/api/v1/total/%v/%v/running/%d",
+						tC.groupUUID, tC.userUUID, key,
 					),
 					bytes.NewReader(reqJSON),
 				)
@@ -1443,7 +1463,7 @@ func TestTotalHandler_Totalize(t *testing.T) {
 
 				router.ServeHTTP(rec, req)
 
-				require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+				require.Equal(t, http.StatusLocked, rec.Code, rec.Body.String())
 			})
 		}
 	})
